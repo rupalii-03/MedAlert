@@ -8,6 +8,12 @@ import {
   LiveFeedNotification,
   BedWardType,
   PatientTrackerStep,
+  HospitalDemoRequestPayload,
+  HospitalDemoRequestRecord,
+  ContactInquiryPayload,
+  ContactInquiryRecord,
+  DoctorAddPayload,
+  StaffSession,
 } from '../types/hospital';
 import {
   INITIAL_HOSPITALS,
@@ -21,6 +27,8 @@ export function useHospitalFeed() {
   const [incomingPatients, setIncomingPatients] = useState<IncomingPatientRecord[]>(
     INITIAL_INCOMING_PATIENTS
   );
+  const [demoRequests, setDemoRequests] = useState<HospitalDemoRequestRecord[]>([]);
+  const [contactInquiries, setContactInquiries] = useState<ContactInquiryRecord[]>([]);
   const [latestToast, setLatestToast] = useState<LiveFeedNotification | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -55,10 +63,14 @@ export function useHospitalFeed() {
         hospitals: Hospital[];
         doctors: Doctor[];
         incomingPatients: IncomingPatientRecord[];
+        demoRequests?: HospitalDemoRequestRecord[];
+        contactInquiries?: ContactInquiryRecord[];
       }) => {
         if (payload?.hospitals) setHospitals(payload.hospitals);
         if (payload?.doctors) setDoctors(payload.doctors);
         if (payload?.incomingPatients) setIncomingPatients(payload.incomingPatients);
+        if (payload?.demoRequests) setDemoRequests(payload.demoRequests);
+        if (payload?.contactInquiries) setContactInquiries(payload.contactInquiries);
         setLastUpdated(new Date());
         setIsLoading(false);
       }
@@ -70,11 +82,15 @@ export function useHospitalFeed() {
         hospitals: Hospital[];
         doctors: Doctor[];
         incomingPatients: IncomingPatientRecord[];
+        demoRequests?: HospitalDemoRequestRecord[];
+        contactInquiries?: ContactInquiryRecord[];
         latestNotification?: LiveFeedNotification;
       }) => {
         if (payload?.hospitals) setHospitals(payload.hospitals);
         if (payload?.doctors) setDoctors(payload.doctors);
         if (payload?.incomingPatients) setIncomingPatients(payload.incomingPatients);
+        if (payload?.demoRequests) setDemoRequests(payload.demoRequests);
+        if (payload?.contactInquiries) setContactInquiries(payload.contactInquiries);
         setLastUpdated(new Date());
         if (payload?.latestNotification) {
           setLatestToast(payload.latestNotification);
@@ -88,10 +104,9 @@ export function useHospitalFeed() {
     };
   }, []);
 
-  // Update bed count from Staff Dashboard
+  // Update bed count via REST PATCH + Socket.IO
   const updateHospitalBeds = useCallback(
-    (hospitalId: string, ward: BedWardType, available: number) => {
-      // Optimistic update
+    async (hospitalId: string, ward: BedWardType, available: number) => {
       setHospitals((prev) =>
         prev.map((h) => {
           if (h.id !== hospitalId) return h;
@@ -108,41 +123,77 @@ export function useHospitalFeed() {
       );
       setLastUpdated(new Date());
 
-      if (socketRef.current?.connected) {
-        socketRef.current.emit('hospital:updateBeds', { hospitalId, ward, available });
+      try {
+        await fetch(`/api/hospitals/${hospitalId}/beds`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ward, available }),
+        });
+      } catch {
+        if (socketRef.current?.connected) {
+          socketRef.current.emit('hospital:updateBeds', { hospitalId, ward, available });
+        }
       }
     },
     []
   );
 
-  // Toggle doctor duty from Staff Dashboard
-  const toggleDoctorDuty = useCallback((doctorId: string) => {
+  // Toggle doctor duty via REST PATCH + Socket.IO
+  const toggleDoctorDuty = useCallback(async (doctorId: string) => {
     setDoctors((prev) =>
       prev.map((d) => (d.id === doctorId ? { ...d, onDuty: !d.onDuty } : d))
     );
     setLastUpdated(new Date());
 
-    if (socketRef.current?.connected) {
-      socketRef.current.emit('doctor:toggleDuty', { doctorId });
+    try {
+      await fetch(`/api/doctors/${doctorId}/duty`, {
+        method: 'PATCH',
+      });
+    } catch {
+      if (socketRef.current?.connected) {
+        socketRef.current.emit('doctor:toggleDuty', { doctorId });
+      }
     }
   }, []);
 
-  // Update incoming patient status tracker
+  // Add a new specialist doctor to a hospital via POST /api/doctors
+  const addDoctorToHospital = useCallback(async (payload: DoctorAddPayload) => {
+    const res = await fetch('/api/doctors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      throw new Error('Failed to add doctor');
+    }
+    const data = await res.json();
+    return data.doctor as Doctor;
+  }, []);
+
+  // Update incoming patient status tracker via REST PATCH
   const updatePatientTrackerStatus = useCallback(
-    (referenceId: string, statusStep: PatientTrackerStep) => {
+    async (referenceId: string, statusStep: PatientTrackerStep) => {
       setIncomingPatients((prev) =>
         prev.map((p) => (p.referenceId === referenceId ? { ...p, statusStep } : p))
       );
       setLastUpdated(new Date());
 
-      if (socketRef.current?.connected) {
-        socketRef.current.emit('patient:updateStatus', { referenceId, statusStep });
+      try {
+        await fetch(`/api/patients/${encodeURIComponent(referenceId)}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ statusStep }),
+        });
+      } catch {
+        if (socketRef.current?.connected) {
+          socketRef.current.emit('patient:updateStatus', { referenceId, statusStep });
+        }
       }
     },
     []
   );
 
-  // Register patient via API (or local fallback if offline)
+  // Register patient via POST /api/register-patient
   const registerPatient = useCallback(
     async (
       payload: PatientRegistrationPayload
@@ -213,6 +264,77 @@ export function useHospitalFeed() {
     [hospitals, doctors]
   );
 
+  // Lookup an existing patient registration by Reference ID via GET /api/patients/:referenceId
+  const lookupPatientByReferenceId = useCallback(
+    async (
+      referenceId: string
+    ): Promise<{ record: IncomingPatientRecord; hospital: Hospital }> => {
+      const res = await fetch(
+        `/api/patients/${encodeURIComponent(referenceId.trim())}`
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data.error || 'Could not find a registration with that Reference ID.'
+        );
+      }
+      return data;
+    },
+    []
+  );
+
+  // Staff Login via POST /api/staff/login
+  const loginHospitalStaff = useCallback(
+    async (staffId: string, passcode: string): Promise<StaffSession> => {
+      const res = await fetch('/api/staff/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffId, passcode }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Invalid credentials');
+      }
+      return data.session as StaffSession;
+    },
+    []
+  );
+
+  // Submit Hospital Demo Request via POST /api/hospital-demo-requests
+  const submitHospitalDemoRequest = useCallback(
+    async (
+      payload: HospitalDemoRequestPayload
+    ): Promise<HospitalDemoRequestRecord> => {
+      const res = await fetch('/api/hospital-demo-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      return data.demoRequest as HospitalDemoRequestRecord;
+    },
+    []
+  );
+
+  // Submit Contact Inquiry via POST /api/contact-inquiries
+  const submitContactInquiry = useCallback(
+    async (payload: ContactInquiryPayload): Promise<ContactInquiryRecord> => {
+      const res = await fetch('/api/contact-inquiries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      return data.inquiry as ContactInquiryRecord;
+    },
+    []
+  );
+
+  // Reset backend database to clean seed state via POST /api/admin/reset-seed
+  const resetBackendDatabase = useCallback(async () => {
+    await fetch('/api/admin/reset-seed', { method: 'POST' });
+  }, []);
+
   const dismissToast = useCallback(() => {
     setLatestToast(null);
   }, []);
@@ -221,6 +343,8 @@ export function useHospitalFeed() {
     hospitals,
     doctors,
     incomingPatients,
+    demoRequests,
+    contactInquiries,
     latestToast,
     dismissToast,
     isConnected,
@@ -228,7 +352,13 @@ export function useHospitalFeed() {
     lastUpdated,
     updateHospitalBeds,
     toggleDoctorDuty,
+    addDoctorToHospital,
     updatePatientTrackerStatus,
     registerPatient,
+    lookupPatientByReferenceId,
+    loginHospitalStaff,
+    submitHospitalDemoRequest,
+    submitContactInquiry,
+    resetBackendDatabase,
   };
 }

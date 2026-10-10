@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import {
+  ContactInquiryPayload,
+  ContactInquiryRecord,
+} from '../types/hospital';
+import {
   HeartPulse,
   PhoneCall,
   Mail,
@@ -10,15 +14,25 @@ import {
   Send,
 } from 'lucide-react';
 
-export const AboutAndContactPage: React.FC = () => {
+interface AboutAndContactPageProps {
+  onSubmitInquiry: (
+    payload: ContactInquiryPayload
+  ) => Promise<ContactInquiryRecord>;
+}
+
+export const AboutAndContactPage: React.FC<AboutAndContactPageProps> = ({
+  onSubmitInquiry,
+}) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [subject, setSubject] = useState('Patient Support / General Inquiry');
   const [message, setMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [savedInquiry, setSavedInquiry] =
+    useState<ContactInquiryRecord | null>(null);
 
-  const handleContactSubmit = (e: React.FormEvent) => {
+  const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -36,7 +50,20 @@ export const AboutAndContactPage: React.FC = () => {
       return;
     }
 
-    setSent(true);
+    setIsSending(true);
+    try {
+      const record = await onSubmitInquiry({
+        name: name.trim(),
+        email: email.trim(),
+        subject,
+        message: message.trim(),
+      });
+      setSavedInquiry(record);
+    } catch {
+      setError('Could not save inquiry to server. Please try again.');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -62,9 +89,9 @@ export const AboutAndContactPage: React.FC = () => {
           </p>
           <p className="text-sm sm:text-base text-[#475569] leading-relaxed">
             By connecting hospital ward desks and patient registrations over a
-            live Socket.IO network, we help patients reach the right care facility
-            on the first trip—and give hospital staff precious advance notice to
-            prepare before arrival.
+            live Socket.IO and persistent Express backend, we help patients reach
+            the right care facility on the first trip—and give hospital staff
+            precious advance notice to prepare before arrival.
           </p>
         </div>
 
@@ -91,7 +118,7 @@ export const AboutAndContactPage: React.FC = () => {
           <div className="pt-3 border-t border-[#DCE6EF] grid grid-cols-2 gap-3 text-xs">
             <div>
               <div className="font-bold text-[#12324A]">9 Partner Hospitals</div>
-              <div className="text-[#475569]">Live in demo network</div>
+              <div className="text-[#475569]">Live in backend database</div>
             </div>
             <div>
               <div className="font-bold text-[#12324A]">5 Metro Regions</div>
@@ -159,21 +186,25 @@ export const AboutAndContactPage: React.FC = () => {
 
         {/* Contact Form */}
         <div className="lg:col-span-7 bg-white rounded-2xl p-6 sm:p-8 border border-[#DCE6EF] shadow-xs">
-          {sent ? (
+          {savedInquiry ? (
             <div role="status" className="py-10 text-center space-y-4">
               <CheckCircle2 className="w-12 h-12 text-[#16A34A] mx-auto" />
+              <div className="text-xs font-mono-tabular font-bold text-[#0B7285]">
+                LOGGED IN BACKEND · TICKET ID: {savedInquiry.id}
+              </div>
               <h3 className="font-display text-2xl font-bold text-[#12324A]">
                 Message Received
               </h3>
               <p className="text-sm text-[#475569] max-w-md mx-auto">
-                Thank you for reaching out, <strong>{name}</strong>. Our care
-                coordination desk will respond to <strong>{email}</strong>{' '}
-                shortly.
+                Thank you for reaching out, <strong>{savedInquiry.name}</strong>.
+                Your message has been saved to our backend database and our care
+                coordination desk will respond to{' '}
+                <strong>{savedInquiry.email}</strong> shortly.
               </p>
               <button
                 type="button"
                 onClick={() => {
-                  setSent(false);
+                  setSavedInquiry(null);
                   setName('');
                   setEmail('');
                   setMessage('');
@@ -185,9 +216,14 @@ export const AboutAndContactPage: React.FC = () => {
             </div>
           ) : (
             <form onSubmit={handleContactSubmit} className="space-y-4" noValidate>
-              <h2 className="font-display text-xl font-bold text-[#12324A]">
-                Send Us a Message
-              </h2>
+              <div>
+                <h2 className="font-display text-xl font-bold text-[#12324A]">
+                  Send Us a Message
+                </h2>
+                <p className="text-xs text-[#475569] mt-0.5">
+                  Persisted via `POST /api/contact-inquiries`
+                </p>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -282,10 +318,11 @@ export const AboutAndContactPage: React.FC = () => {
 
               <button
                 type="submit"
-                className="px-6 py-3 rounded-xl bg-[#0B7285] hover:bg-[#095C6B] text-white font-display text-sm font-semibold transition-colors inline-flex items-center gap-2 cursor-pointer"
+                disabled={isSending}
+                className="px-6 py-3 rounded-xl bg-[#0B7285] hover:bg-[#095C6B] disabled:opacity-60 text-white font-display text-sm font-semibold transition-colors inline-flex items-center gap-2 cursor-pointer"
               >
                 <Send className="w-4 h-4" />
-                <span>Send Message</span>
+                <span>{isSending ? 'Saving...' : 'Send Message'}</span>
               </button>
             </form>
           )}

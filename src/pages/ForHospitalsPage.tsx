@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { PageRoute } from '../types/hospital';
+import {
+  PageRoute,
+  HospitalDemoRequestPayload,
+  HospitalDemoRequestRecord,
+} from '../types/hospital';
 import {
   Building2,
   CheckCircle2,
   AlertCircle,
   Clock,
-  ShieldCheck,
   Layers,
   Users,
   Send,
@@ -13,10 +16,14 @@ import {
 
 interface ForHospitalsPageProps {
   onNavigate: (page: PageRoute) => void;
+  onSubmitDemoRequest: (
+    payload: HospitalDemoRequestPayload
+  ) => Promise<HospitalDemoRequestRecord>;
 }
 
 export const ForHospitalsPage: React.FC<ForHospitalsPageProps> = ({
   onNavigate,
+  onSubmitDemoRequest,
 }) => {
   const [hospitalName, setHospitalName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
@@ -26,9 +33,11 @@ export const ForHospitalsPage: React.FC<ForHospitalsPageProps> = ({
   const [bedCapacity, setBedCapacity] = useState('150');
   const [notes, setNotes] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [createdRecord, setCreatedRecord] =
+    useState<HospitalDemoRequestRecord | null>(null);
 
-  const handleDemoSubmit = (e: React.FormEvent) => {
+  const handleDemoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
@@ -46,7 +55,23 @@ export const ForHospitalsPage: React.FC<ForHospitalsPageProps> = ({
       return;
     }
 
-    setSubmitted(true);
+    setIsSending(true);
+    try {
+      const record = await onSubmitDemoRequest({
+        hospitalName: hospitalName.trim(),
+        contactPerson: contactPerson.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+        city: city.trim(),
+        bedCapacity: Number(bedCapacity) || 150,
+        notes: notes.trim(),
+      });
+      setCreatedRecord(record);
+    } catch {
+      setFormError('Failed to save request to server. Please try again.');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   return (
@@ -209,20 +234,31 @@ export const ForHospitalsPage: React.FC<ForHospitalsPageProps> = ({
 
         {/* Request a Demo Form */}
         <div className="lg:col-span-7 bg-white rounded-2xl p-6 sm:p-8 border border-[#DCE6EF] shadow-xs">
-          {submitted ? (
+          {createdRecord ? (
             <div role="status" className="py-10 text-center space-y-4">
               <CheckCircle2 className="w-12 h-12 text-[#16A34A] mx-auto" />
+              <div className="text-xs font-mono-tabular font-bold text-[#0B7285]">
+                SAVED TO BACKEND · REQUEST ID: {createdRecord.id}
+              </div>
               <h3 className="font-display text-2xl font-bold text-[#12324A]">
                 Hospital Demo Request Confirmed
               </h3>
               <p className="text-sm text-[#475569] max-w-md mx-auto">
-                Thank you, <strong>{contactPerson}</strong>. Our hospital
-                integration team will contact <strong>{email}</strong> to
-                schedule a walkthrough for <strong>{hospitalName}</strong>.
+                Thank you, <strong>{createdRecord.contactPerson}</strong>. Your
+                request for <strong>{createdRecord.hospitalName}</strong> has
+                been logged in our backend database and is visible in the Staff
+                Dashboard.
               </p>
               <button
                 type="button"
-                onClick={() => setSubmitted(false)}
+                onClick={() => {
+                  setCreatedRecord(null);
+                  setHospitalName('');
+                  setContactPerson('');
+                  setEmail('');
+                  setPhone('');
+                  setNotes('');
+                }}
                 className="px-5 py-2.5 rounded-xl bg-[#0B7285] text-white text-xs font-semibold cursor-pointer"
               >
                 Submit Another Request
@@ -235,7 +271,7 @@ export const ForHospitalsPage: React.FC<ForHospitalsPageProps> = ({
                   Request a Hospital Onboarding Demo
                 </h2>
                 <p className="text-xs text-[#475569] mt-0.5">
-                  Speak with our healthcare integration specialists
+                  Submits directly to `/api/hospital-demo-requests`
                 </p>
               </div>
 
@@ -377,10 +413,15 @@ export const ForHospitalsPage: React.FC<ForHospitalsPageProps> = ({
 
               <button
                 type="submit"
-                className="w-full py-3 px-5 rounded-xl bg-[#F58220] hover:bg-[#E06D0B] text-white font-display text-sm font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                disabled={isSending}
+                className="w-full py-3 px-5 rounded-xl bg-[#F58220] hover:bg-[#E06D0B] disabled:opacity-60 text-white font-display text-sm font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Send className="w-4 h-4" />
-                <span>Request Hospital Network Demo</span>
+                <span>
+                  {isSending
+                    ? 'Saving Request...'
+                    : 'Request Hospital Network Demo'}
+                </span>
               </button>
             </form>
           )}

@@ -23,6 +23,7 @@ import {
   Clock,
   RefreshCw,
   FileCheck2,
+  Search,
 } from 'lucide-react';
 
 interface PatientRegistrationPageProps {
@@ -36,6 +37,9 @@ interface PatientRegistrationPageProps {
     hospital: Hospital;
     doctor: Doctor;
   }>;
+  onLookupReferenceId: (
+    referenceId: string
+  ) => Promise<{ record: IncomingPatientRecord; hospital: Hospital }>;
   onUpdateTrackerStep: (referenceId: string, step: PatientTrackerStep) => void;
 }
 
@@ -46,9 +50,16 @@ export const PatientRegistrationPage: React.FC<
   preselectedHospitalId = 'auto',
   preselectedSpecialty = 'Emergency Medicine',
   onRegisterSubmit,
+  onLookupReferenceId,
   onUpdateTrackerStep,
 }) => {
+  const [activeTab, setActiveTab] = useState<'new' | 'lookup'>('new');
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
+
+  // Lookup Reference ID state
+  const [lookupInput, setLookupInput] = useState('MAG-849201');
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
 
   // Step 1: Personal Details
   const [fullName, setFullName] = useState('Aarav Sharma (Demo Patient)');
@@ -83,7 +94,6 @@ export const PatientRegistrationPage: React.FC<
   const [confirmationData, setConfirmationData] = useState<{
     record: IncomingPatientRecord;
     hospital: Hospital;
-    doctor: Doctor;
   } | null>(null);
 
   const validateCurrentStep = (): boolean => {
@@ -138,30 +148,92 @@ export const PatientRegistrationPage: React.FC<
         specialtyNeeded,
         preferredHospitalId,
       });
-      setConfirmationData(result);
+      setConfirmationData({
+        record: result.record,
+        hospital: result.hospital,
+      });
       setIsSubmitting(false);
-    }, 650);
+    }, 550);
+  };
+
+  const handleReferenceLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLookupError(null);
+    if (!lookupInput.trim()) {
+      setLookupError('Please enter a Reference ID (e.g. MAG-849201).');
+      return;
+    }
+
+    setIsLookingUp(true);
+    try {
+      const res = await onLookupReferenceId(lookupInput.trim());
+      setConfirmationData(res);
+    } catch (err) {
+      setLookupError(
+        err instanceof Error ? err.message : 'Reference ID not found.'
+      );
+    } finally {
+      setIsLookingUp(false);
+    }
   };
 
   const cityHospitals = hospitals.filter((h) => h.city === city);
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
-      {/* Header */}
+      {/* Header & Mode Switcher */}
       <div className="bg-white rounded-2xl p-6 sm:p-8 border border-[#DCE6EF] shadow-xs">
-        <div className="text-xs font-bold uppercase tracking-wider text-[#0B7285]">
-          Instant Pre-Arrival Hospital Registration · Demo Mode
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-[#0B7285]">
+              Instant Pre-Arrival Hospital Registration · Backend Connected
+            </div>
+            <h1 className="mt-1 font-display text-2xl sm:text-3xl font-bold text-[#12324A]">
+              Patient Registration &amp; Live Status Lookup
+            </h1>
+          </div>
+
+          {/* Segmented Mode Control: New Registration vs Track Reference ID */}
+          <div className="inline-flex items-center bg-[#F4F8FB] p-1 rounded-xl border border-[#DCE6EF] self-start">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('new');
+                setConfirmationData(null);
+              }}
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                activeTab === 'new'
+                  ? 'bg-[#0B7285] text-white'
+                  : 'text-[#475569] hover:text-[#12324A]'
+              }`}
+            >
+              New Patient Registration
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('lookup');
+                setConfirmationData(null);
+              }}
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                activeTab === 'lookup'
+                  ? 'bg-[#0B7285] text-white'
+                  : 'text-[#475569] hover:text-[#12324A]'
+              }`}
+            >
+              Track Reference ID
+            </button>
+          </div>
         </div>
-        <h1 className="mt-1 font-display text-2xl sm:text-3xl font-bold text-[#12324A]">
-          Register Patient &amp; Notify Hospital Care Team
-        </h1>
-        <p className="mt-1.5 text-sm text-[#475569]">
-          Complete this quick 3-step form so we can match you with an available
-          bed and alert the receiving hospital’s triage desk before you arrive.
+
+        <p className="mt-2 text-sm text-[#475569]">
+          {activeTab === 'new'
+            ? 'Complete this quick 3-step form so our backend can match you with an available bed and alert the receiving hospital’s triage desk before you arrive.'
+            : 'Already registered? Enter your Reference ID below to fetch your live bed readiness status from the hospital server.'}
         </p>
 
         {/* Multi-Step Form Progress Bar */}
-        {!confirmationData && (
+        {activeTab === 'new' && !confirmationData && (
           <div className="mt-6 pt-5 border-t border-slate-100 grid grid-cols-3 gap-3">
             {[
               { step: 1, label: '1. Patient Details' },
@@ -193,6 +265,64 @@ export const PatientRegistrationPage: React.FC<
         )}
       </div>
 
+      {/* Track Existing Reference ID Lookup Form */}
+      {activeTab === 'lookup' && !confirmationData && (
+        <div className="bg-white rounded-2xl p-6 sm:p-8 border border-[#DCE6EF] shadow-xs space-y-5">
+          <h2 className="font-display text-lg font-bold text-[#12324A]">
+            Look Up Your Pre-Arrival Registration
+          </h2>
+          <form onSubmit={handleReferenceLookup} className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-[#475569] absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={lookupInput}
+                onChange={(e) => setLookupInput(e.target.value)}
+                placeholder="Enter Reference ID (e.g. MAG-849201 or MAG-849174)"
+                aria-label="Reference ID"
+                className="w-full pl-10 pr-4 py-3 rounded-xl bg-[#F4F8FB] border border-[#DCE6EF] text-sm font-mono-tabular text-[#12324A] focus:bg-white focus:border-[#0B7285] focus:outline-none"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isLookingUp}
+              className="px-6 py-3 rounded-xl bg-[#F58220] hover:bg-[#E06D0B] text-white font-display text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap"
+            >
+              {isLookingUp ? 'Checking Server...' : 'Check Live Status'}
+            </button>
+          </form>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs text-[#475569]">
+            <span>Sample Reference IDs in database:</span>
+            <button
+              type="button"
+              onClick={() => setLookupInput('MAG-849201')}
+              className="font-mono-tabular font-semibold text-[#0B7285] underline cursor-pointer"
+            >
+              MAG-849201
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() => setLookupInput('MAG-849174')}
+              className="font-mono-tabular font-semibold text-[#0B7285] underline cursor-pointer"
+            >
+              MAG-849174
+            </button>
+          </div>
+
+          {lookupError && (
+            <div
+              role="alert"
+              className="rounded-xl bg-[#FEF2F2] border border-[#FECACA] p-3.5 text-xs font-semibold text-[#DC2626] flex items-center gap-2"
+            >
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{lookupError}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Confirmation State */}
       {confirmationData ? (
         <div
@@ -208,7 +338,7 @@ export const PatientRegistrationPage: React.FC<
                 </div>
                 <div>
                   <div className="text-xs font-bold uppercase tracking-wider text-[#15803D]">
-                    Hospital Notified &amp; Bed Pre-Allocated
+                    Hospital Notified &amp; Bed Pre-Allocated ({confirmationData.record.patientName})
                   </div>
                   <h2 className="font-display text-xl sm:text-2xl font-bold text-[#12324A]">
                     {confirmationData.hospital.name}
@@ -316,13 +446,13 @@ export const PatientRegistrationPage: React.FC<
                   }}
                   className="px-4 py-2.5 rounded-xl bg-[#0B7285] hover:bg-[#095C6B] text-white text-xs font-semibold cursor-pointer"
                 >
-                  Register Another Patient
+                  Back to Registration
                 </button>
               </div>
             </div>
           </div>
         </div>
-      ) : (
+      ) : activeTab === 'new' ? (
         /* Multi-step Registration Form */
         <form
           onSubmit={handleFinalSubmit}
@@ -655,7 +785,7 @@ export const PatientRegistrationPage: React.FC<
             )}
           </div>
         </form>
-      )}
+      ) : null}
     </div>
   );
 };

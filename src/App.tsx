@@ -22,14 +22,22 @@ export default function App() {
     hospitals,
     doctors,
     incomingPatients,
+    demoRequests,
+    contactInquiries,
     latestToast,
     dismissToast,
     isLoading,
     lastUpdated,
     updateHospitalBeds,
     toggleDoctorDuty,
+    addDoctorToHospital,
     updatePatientTrackerStatus,
     registerPatient,
+    lookupPatientByReferenceId,
+    loginHospitalStaff,
+    submitHospitalDemoRequest,
+    submitContactInquiry,
+    resetBackendDatabase,
   } = useHospitalFeed();
 
   const [currentPage, setCurrentPage] = useState<PageRoute>('home');
@@ -135,6 +143,7 @@ export default function App() {
             preselectedHospitalId={preselectedHospitalId}
             preselectedSpecialty={preselectedSpecialty}
             onRegisterSubmit={registerPatient}
+            onLookupReferenceId={lookupPatientByReferenceId}
             onUpdateTrackerStep={updatePatientTrackerStatus}
           />
         )}
@@ -144,17 +153,27 @@ export default function App() {
             hospitals={hospitals}
             doctors={doctors}
             incomingPatients={incomingPatients}
+            demoRequests={demoRequests}
+            contactInquiries={contactInquiries}
             onUpdateBeds={updateHospitalBeds}
             onToggleDoctorDuty={toggleDoctorDuty}
+            onAddDoctor={addDoctorToHospital}
             onUpdatePatientStatus={updatePatientTrackerStatus}
+            onStaffLogin={loginHospitalStaff}
+            onResetDatabase={resetBackendDatabase}
           />
         )}
 
         {currentPage === 'for-hospitals' && (
-          <ForHospitalsPage onNavigate={handleNavigate} />
+          <ForHospitalsPage
+            onNavigate={handleNavigate}
+            onSubmitDemoRequest={submitHospitalDemoRequest}
+          />
         )}
 
-        {currentPage === 'about' && <AboutAndContactPage />}
+        {currentPage === 'about' && (
+          <AboutAndContactPage onSubmitInquiry={submitContactInquiry} />
+        )}
       </main>
 
       {/* Non-intrusive Live Update Toast Notification */}

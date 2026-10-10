@@ -68,6 +68,16 @@ export interface Doctor {
   consultationWaitMins: number;
 }
 
+export interface DoctorAddPayload {
+  name: string;
+  qualification: string;
+  specialty: SpecialtyType;
+  experienceYears: number;
+  hospitalId: string;
+  shiftHours: string;
+  languages: string[];
+}
+
 export type PatientTrackerStep =
   | 'Registered'
   | 'Hospital notified'
@@ -106,6 +116,42 @@ export interface IncomingPatientRecord {
   estimatedWaitMinutes: number;
   distanceKm: number;
   statusStep: PatientTrackerStep;
+}
+
+export interface HospitalDemoRequestPayload {
+  hospitalName: string;
+  contactPerson: string;
+  email: string;
+  phone: string;
+  city: string;
+  bedCapacity: number;
+  notes: string;
+}
+
+export interface HospitalDemoRequestRecord extends HospitalDemoRequestPayload {
+  id: string;
+  createdAtIso: string;
+  status: 'Pending Review' | 'Reviewed' | 'Onboarded';
+}
+
+export interface ContactInquiryPayload {
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+}
+
+export interface ContactInquiryRecord extends ContactInquiryPayload {
+  id: string;
+  createdAtIso: string;
+}
+
+export interface StaffSession {
+  token: string;
+  staffId: string;
+  name: string;
+  role: string;
+  hospitalId: string;
 }
 
 export interface LiveFeedNotification {

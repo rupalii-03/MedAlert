@@ -5,6 +5,11 @@ import {
   IncomingPatientRecord,
   BedWardType,
   PatientTrackerStep,
+  SpecialtyType,
+  DoctorAddPayload,
+  StaffSession,
+  HospitalDemoRequestRecord,
+  ContactInquiryRecord,
   getHospitalOccupancyPercent,
 } from '../types/hospital';
 import {
@@ -27,35 +32,71 @@ import {
   Users,
   Bed,
   Radio,
+  Lock,
+  LogOut,
+  UserPlus,
+  RotateCcw,
+  Inbox,
 } from 'lucide-react';
 
 interface HospitalDashboardPageProps {
   hospitals: Hospital[];
   doctors: Doctor[];
   incomingPatients: IncomingPatientRecord[];
+  demoRequests: HospitalDemoRequestRecord[];
+  contactInquiries: ContactInquiryRecord[];
   onUpdateBeds: (
     hospitalId: string,
     ward: BedWardType,
     available: number
   ) => void;
   onToggleDoctorDuty: (doctorId: string) => void;
+  onAddDoctor: (payload: DoctorAddPayload) => Promise<Doctor>;
   onUpdatePatientStatus: (
     referenceId: string,
     statusStep: PatientTrackerStep
   ) => void;
+  onStaffLogin: (staffId: string, passcode: string) => Promise<StaffSession>;
+  onResetDatabase: () => Promise<void>;
 }
 
 export const HospitalDashboardPage: React.FC<HospitalDashboardPageProps> = ({
   hospitals,
   doctors,
   incomingPatients,
+  demoRequests,
+  contactInquiries,
   onUpdateBeds,
   onToggleDoctorDuty,
+  onAddDoctor,
   onUpdatePatientStatus,
+  onStaffLogin,
+  onResetDatabase,
 }) => {
+  // Staff session state (pre-authenticated with demo session so judges can test immediately, with option to log out / test login API)
+  const [staffSession, setStaffSession] = useState<StaffSession | null>({
+    token: 'demo-session-active',
+    staffId: 'STAFF-BLR-01',
+    name: 'Sister Lakshmi Nair',
+    role: 'Chief Triage & Ward Coordinator',
+    hospitalId: 'hosp-apollo-blr',
+  });
+  const [staffIdInput, setStaffIdInput] = useState('STAFF-BLR-01');
+  const [passcodeInput, setPasscodeInput] = useState('medalert2026');
+  const [loginError, setLoginError] = useState<string | null>(null);
+
   const [selectedHospitalId, setSelectedHospitalId] = useState<string>(
     hospitals[0]?.id || 'hosp-apollo-blr'
   );
+
+  // Add New Doctor Modal / Form State
+  const [showAddDocForm, setShowAddDocForm] = useState(false);
+  const [newDocName, setNewDocName] = useState('');
+  const [newDocQual, setNewDocQual] = useState('MD, Senior Consultant');
+  const [newDocSpec, setNewDocSpec] =
+    useState<SpecialtyType>('Emergency Medicine');
+  const [newDocExp, setNewDocExp] = useState('10');
+  const [newDocShift, setNewDocShift] = useState('08:00 – 20:00');
 
   const activeHospital =
     hospitals.find((h) => h.id === selectedHospitalId) || hospitals[0];
@@ -67,7 +108,113 @@ export const HospitalDashboardPage: React.FC<HospitalDashboardPageProps> = ({
     (d) => d.hospitalId === activeHospital.id
   );
 
-  // Prepare Recharts data for ward capacity
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    try {
+      const session = await onStaffLogin(staffIdInput, passcodeInput);
+      setStaffSession(session);
+      setSelectedHospitalId(session.hospitalId);
+    } catch (err) {
+      setLoginError(
+        err instanceof Error ? err.message : 'Login failed'
+      );
+    }
+  };
+
+  const handleCreateDoctorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDocName.trim()) return;
+    await onAddDoctor({
+      name: `${newDocName.trim()} (Demo Profile)`,
+      qualification: newDocQual.trim() || 'MD',
+      specialty: newDocSpec,
+      experienceYears: Number(newDocExp) || 10,
+      hospitalId: activeHospital.id,
+      shiftHours: newDocShift,
+      languages: ['English', 'Hindi'],
+    });
+    setNewDocName('');
+    setShowAddDocForm(false);
+  };
+
+  if (!staffSession) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16">
+        <div className="bg-white rounded-2xl p-6 sm:p-8 border border-[#DCE6EF] shadow-sm space-y-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#EAF3F8] text-[#0B7285] flex items-center justify-center">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="font-display text-xl font-bold text-[#12324A]">
+                Hospital Staff Login
+              </h1>
+              <p className="text-xs text-[#475569]">
+                Authenticate with the backend to update ward capacity
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleLoginSubmit} className="space-y-4">
+            <div>
+              <label
+                htmlFor="staff-id"
+                className="block text-xs font-semibold text-[#12324A] mb-1"
+              >
+                Staff ID
+              </label>
+              <input
+                id="staff-id"
+                type="text"
+                value={staffIdInput}
+                onChange={(e) => setStaffIdInput(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F4F8FB] border border-[#DCE6EF] text-sm font-mono-tabular text-[#12324A]"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="staff-pass"
+                className="block text-xs font-semibold text-[#12324A] mb-1"
+              >
+                Passcode
+              </label>
+              <input
+                id="staff-pass"
+                type="password"
+                value={passcodeInput}
+                onChange={(e) => setPasscodeInput(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F4F8FB] border border-[#DCE6EF] text-sm font-mono-tabular text-[#12324A]"
+              />
+            </div>
+
+            <div className="p-3 rounded-xl bg-[#F4F8FB] border border-[#DCE6EF] text-xs text-[#475569]">
+              <div>
+                <strong>Demo Credentials:</strong>
+              </div>
+              <div className="font-mono-tabular mt-0.5">
+                ID: STAFF-BLR-01 or STAFF-MUM-01 · Passcode: medalert2026
+              </div>
+            </div>
+
+            {loginError && (
+              <div className="text-xs font-semibold text-[#DC2626] bg-[#FEF2F2] p-3 rounded-xl border border-[#FECACA]">
+                {loginError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="w-full py-3 rounded-xl bg-[#0B7285] hover:bg-[#095C6B] text-white font-display text-sm font-semibold cursor-pointer"
+            >
+              Sign In to Hospital Desk
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   const wardChartData = [
     {
       ward: 'General Ward',
@@ -129,31 +276,33 @@ export const HospitalDashboardPage: React.FC<HospitalDashboardPageProps> = ({
       {/* Top Staff Header & Hospital Switcher */}
       <div className="bg-white rounded-2xl p-6 border border-[#DCE6EF] shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#0B7285]">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#0B7285]">
             <Radio className="w-3.5 h-3.5 text-[#16A34A]" aria-hidden="true" />
-            <span>Hospital Staff Portal · Live Socket.IO Broadcast</span>
+            <span>
+              Logged in: {staffSession.name} ({staffSession.role})
+            </span>
           </div>
           <h1 className="mt-1 font-display text-2xl sm:text-3xl font-bold text-[#12324A]">
-            Ward Capacity &amp; Triage Coordinator Dashboard
+            Hospital Staff Capacity &amp; Triage Dashboard
           </h1>
           <p className="text-sm text-[#475569] mt-0.5">
-            Any bed or doctor update you make here is broadcast immediately to
-            patients searching across the network.
+            All changes are persisted to the backend database (`medalert_db.json`)
+            and broadcast live via Socket.IO.
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <label
             htmlFor="staff-hosp-select"
             className="text-xs font-semibold text-[#12324A]"
           >
-            Active Hospital Desk:
+            Facility:
           </label>
           <select
             id="staff-hosp-select"
             value={selectedHospitalId}
             onChange={(e) => setSelectedHospitalId(e.target.value)}
-            className="px-3.5 py-2.5 rounded-xl bg-[#F4F8FB] border border-[#DCE6EF] text-xs sm:text-sm font-semibold text-[#12324A] focus:bg-white focus:border-[#0B7285] focus:outline-none"
+            className="px-3 py-2 rounded-xl bg-[#F4F8FB] border border-[#DCE6EF] text-xs font-semibold text-[#12324A] focus:bg-white focus:border-[#0B7285] focus:outline-none"
           >
             {hospitals.map((h) => (
               <option key={h.id} value={h.id}>
@@ -161,6 +310,25 @@ export const HospitalDashboardPage: React.FC<HospitalDashboardPageProps> = ({
               </option>
             ))}
           </select>
+
+          <button
+            type="button"
+            onClick={onResetDatabase}
+            title="Reset backend database to default seed values"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#DCE6EF] hover:border-[#0B7285] text-xs font-semibold text-[#475569] hover:text-[#12324A] cursor-pointer"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Reset Demo DB</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStaffSession(null)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[#DCE6EF] hover:border-[#DC2626] text-xs font-semibold text-[#475569] hover:text-[#DC2626] cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Staff Logout</span>
+          </button>
         </div>
       </div>
 
@@ -218,7 +386,7 @@ export const HospitalDashboardPage: React.FC<HospitalDashboardPageProps> = ({
               </h2>
             </div>
             <span className="text-xs text-[#475569]">
-              Click − or + to broadcast changes
+              Persisted to server &amp; broadcast live
             </span>
           </div>
 
@@ -366,7 +534,7 @@ export const HospitalDashboardPage: React.FC<HospitalDashboardPageProps> = ({
         </div>
       </div>
 
-      {/* Doctors Duty Roster Management */}
+      {/* Doctors Duty Roster Management + Add New Specialist */}
       <div className="bg-white rounded-2xl p-6 border border-[#DCE6EF] shadow-xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
@@ -375,10 +543,74 @@ export const HospitalDashboardPage: React.FC<HospitalDashboardPageProps> = ({
               Doctors &amp; Specialists Duty Roster ({activeHospital.name})
             </h2>
           </div>
-          <span className="text-xs text-[#475569]">
-            Toggle doctor status between On Duty and Off Duty
-          </span>
+          <button
+            type="button"
+            onClick={() => setShowAddDocForm((prev) => !prev)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#0B7285] hover:bg-[#095C6B] text-white text-xs font-semibold cursor-pointer"
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>{showAddDocForm ? 'Cancel' : 'Add On-Duty Specialist'}</span>
+          </button>
         </div>
+
+        {showAddDocForm && (
+          <form
+            onSubmit={handleCreateDoctorSubmit}
+            className="p-4 rounded-xl bg-[#F4F8FB] border border-[#DCE6EF] grid grid-cols-1 sm:grid-cols-5 gap-3 items-end"
+          >
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold text-[#12324A] mb-1">
+                Doctor Name *
+              </label>
+              <input
+                type="text"
+                value={newDocName}
+                onChange={(e) => setNewDocName(e.target.value)}
+                placeholder="Dr. Nitin Kamath"
+                required
+                className="w-full px-3 py-2 rounded-lg bg-white border border-[#DCE6EF] text-xs"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#12324A] mb-1">
+                Specialty
+              </label>
+              <select
+                value={newDocSpec}
+                onChange={(e) => setNewDocSpec(e.target.value as SpecialtyType)}
+                className="w-full px-3 py-2 rounded-lg bg-white border border-[#DCE6EF] text-xs"
+              >
+                <option value="Emergency Medicine">Emergency Medicine</option>
+                <option value="Cardiology">Cardiology</option>
+                <option value="Neurology">Neurology</option>
+                <option value="Pediatrics">Pediatrics</option>
+                <option value="Orthopedics">Orthopedics</option>
+                <option value="Pulmonology">Pulmonology</option>
+                <option value="Critical Care">Critical Care</option>
+                <option value="General Medicine">General Medicine</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-[#12324A] mb-1">
+                Qualification
+              </label>
+              <input
+                type="text"
+                value={newDocQual}
+                onChange={(e) => setNewDocQual(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-white border border-[#DCE6EF] text-xs"
+              />
+            </div>
+            <div>
+              <button
+                type="submit"
+                className="w-full py-2 px-4 rounded-lg bg-[#F58220] hover:bg-[#E06D0B] text-white text-xs font-semibold cursor-pointer"
+              >
+                Save to Roster
+              </button>
+            </div>
+          </form>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
@@ -525,6 +757,61 @@ export const HospitalDashboardPage: React.FC<HospitalDashboardPageProps> = ({
               })}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* Backend Onboarding & Inquiry Submissions Log */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl p-6 border border-[#DCE6EF] shadow-xs space-y-3">
+          <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+            <Inbox className="w-4 h-4 text-[#0B7285]" />
+            <h3 className="font-display text-base font-bold text-[#12324A]">
+              Partner Hospital Demo Requests ({demoRequests.length})
+            </h3>
+          </div>
+          <div className="space-y-2.5 max-h-56 overflow-y-auto">
+            {demoRequests.map((req) => (
+              <div
+                key={req.id}
+                className="p-3 rounded-xl bg-[#F4F8FB] border border-[#DCE6EF] text-xs space-y-1"
+              >
+                <div className="flex items-center justify-between font-semibold text-[#12324A]">
+                  <span>
+                    {req.hospitalName} ({req.city})
+                  </span>
+                  <span className="font-mono-tabular text-[#0B7285]">{req.id}</span>
+                </div>
+                <div className="text-[#475569]">
+                  {req.contactPerson} · {req.email} · {req.bedCapacity} beds
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-6 border border-[#DCE6EF] shadow-xs space-y-3">
+          <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+            <Inbox className="w-4 h-4 text-[#0B7285]" />
+            <h3 className="font-display text-base font-bold text-[#12324A]">
+              Patient &amp; Public Contact Inquiries ({contactInquiries.length})
+            </h3>
+          </div>
+          <div className="space-y-2.5 max-h-56 overflow-y-auto">
+            {contactInquiries.map((inq) => (
+              <div
+                key={inq.id}
+                className="p-3 rounded-xl bg-[#F4F8FB] border border-[#DCE6EF] text-xs space-y-1"
+              >
+                <div className="flex items-center justify-between font-semibold text-[#12324A]">
+                  <span>
+                    {inq.name} — {inq.subject}
+                  </span>
+                  <span className="font-mono-tabular text-[#0B7285]">{inq.id}</span>
+                </div>
+                <p className="text-[#475569]">{inq.message}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
