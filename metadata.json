@@ -1,0 +1,6 @@
+{
+  "name": "MedAlert Grid — Digital Health Infrastructure",
+  "description": "Real-time hospital bed and doctor availability command center by Team Codec. Connects patients to suitable hospitals instantly on registration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
